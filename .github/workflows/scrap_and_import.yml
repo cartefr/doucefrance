@@ -2,7 +2,7 @@ name: Scrape and Insert Daily
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Exécute toutes les 5 min
+    - cron: '*/10 * * * *'  # Exécute toutes les 5 min
   workflow_dispatch:
 
 concurrency:
