@@ -2,7 +2,7 @@ name: Scrape and Insert Daily
 
 on:
   schedule:
-    - cron: '50 23 * * *'  # Exécute tous les jours à 23h50 du matin
+    - cron: '0 * * * *'  # Exécute tous les jours à 23h50 du matin
   workflow_dispatch:
 
 concurrency:
