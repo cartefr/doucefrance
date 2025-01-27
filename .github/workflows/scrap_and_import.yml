@@ -5,6 +5,10 @@ on:
     - cron: '* * * * *'  # Exécute toutes les minutes
   workflow_dispatch:
 
+concurrency:
+  group: "scrape-and-insert-daily"
+  cancel-in-progress: true
+
 jobs:
   scrape-and-insert:
     runs-on: ubuntu-latest
