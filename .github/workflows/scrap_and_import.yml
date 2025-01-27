@@ -1,0 +1,49 @@
+name: Scrap and Import to Supabase
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Exécute toutes les 6 heures
+  workflow_dispatch:
+
+jobs:
+  scrap-fds-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Optionnel : Récupérer la date max
+      - name: Get last date
+        id: lastdate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python get_last_date.py > lastdate.txt
+
+      - name: Run scrap_fds
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          LASTDATE=$(cat lastdate.txt)
+          END_DATE=$(date +"%Y-%m-%d")
+          python scrap_fds.py --auto --out bdd.csv
+          # ou python scrap_fds.py --start $LASTDATE --end $END_DATE
+
+      - name: Import to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python import_csv_to_supabase.py
