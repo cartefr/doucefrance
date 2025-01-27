@@ -33,13 +33,3 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scrape_and_insert.py --cities "cities.csv" --popular-cities "popular_cities.csv"
-
-      # Optionnel : Notification en cas d'échec (par exemple, via Slack)
-      - name: Notify Slack on failure
-        if: failure()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,commit,author,action,eventName,ref,workflow,job,steps
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
