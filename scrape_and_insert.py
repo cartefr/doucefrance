@@ -44,13 +44,7 @@ def get_max_id():
     """
     try:
         response = supabase.table(TABLE_NAME).select('id').order('id', desc=True).limit(1).execute()
-
-
-        #print(supabase.table(TABLE_NAME).select('id').execute())
-        #print(supabase.table(TABLE_NAME).select('id').order('id', desc=True).limit(1).execute())
-        #exit()
-        
-        data= response.data
+        data = response.data
         print("data est", data)
         if data:
             try:
@@ -66,6 +60,22 @@ def get_max_id():
     except Exception as e:
         logging.error(f"Exception lors de la récupération du max ID : {e}")
         return 0
+
+def get_existing_links_for_day(day_str):
+    """
+    Récupère tous les 'lien_fdesouche' des articles pour une date donnée depuis Supabase.
+    """
+    try:
+        response = supabase.table(TABLE_NAME).select('lien_fdesouche').eq('date', day_str).execute()
+        existing_links = set()
+        for item in response.data:
+            if 'lien_fdesouche' in item and item['lien_fdesouche']:
+                existing_links.add(item['lien_fdesouche'])
+        logging.info(f"{len(existing_links)} liens existants récupérés pour la date {day_str}.")
+        return existing_links
+    except Exception as e:
+        logging.error(f"Exception lors de la récupération des liens existants : {e}")
+        return set()
 
 def transform_label_for_dict(label: str) -> str:
     """
@@ -247,9 +257,10 @@ def scrape_today(popular_cities_dict, cities_dict_nodept, cities_dict_dept):
     logging.info(f"{len(articles)} articles trouvés pour la date {day_str}.")
     return articles
 
-def insert_articles(articles, start_id):
+def insert_articles(articles, start_id, existing_links):
     """
-    Insère directement les articles dans Supabase avec des IDs séquentiels.
+    Insère directement les articles dans Supabase avec des IDs séquentiels,
+    en évitant les doublons basés sur 'lien_fdesouche'.
     """
     if not articles:
         logging.info("Aucun article à insérer.")
@@ -259,6 +270,9 @@ def insert_articles(articles, start_id):
     compteur = start_id
 
     for article in articles:
+        if article['lien_fdesouche'] in existing_links:
+            logging.info(f"Article déjà présent, skipping: {article['lien_fdesouche']}")
+            continue
         record = {
             'id': compteur,
             'date': article['date'],
@@ -275,11 +289,13 @@ def insert_articles(articles, start_id):
         records_to_insert.append(record)
         compteur +=1
 
-    try:
-        supabase.table(TABLE_NAME).insert(records_to_insert).execute()
-    except Exception as e:
-        logging.error(f"Erreur lors de l'insertion des articles : {e}")
+    if not records_to_insert:
+        logging.info("Aucun nouvel article à insérer après vérification des doublons.")
         return
+
+   
+    supabase.table(TABLE_NAME).insert(records_to_insert).execute()
+    
 def main():
     parser = argparse.ArgumentParser(description="Scraping Fdesouche et insertion dans Supabase.")
     parser.add_argument('--cities', type=str, default="cities.csv", help="Chemin vers cities.csv")
@@ -300,8 +316,12 @@ def main():
     # Récupérer le max ID actuel dans Supabase
     max_id = get_max_id()
 
-    # Insérer les nouveaux articles avec des IDs séquentiels
-    insert_articles(articles, max_id +1)
+    # Récupérer les liens existants pour la date d'aujourd'hui
+    day_str = articles[0]['date'] if articles else datetime.today().strftime("%Y-%m-%d")
+    existing_links = get_existing_links_for_day(day_str)
+
+    # Insérer les nouveaux articles avec des IDs séquentiels, en évitant les doublons
+    insert_articles(articles, max_id +1, existing_links)
 
 if __name__ == "__main__":
     main()
