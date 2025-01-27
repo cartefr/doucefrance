@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nos faits "divers"</title>
+
+  <!-- Feuille de style Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Police stylée (Lobster) via Google Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&display=swap" />
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <script>
+  /************************************************************
+     * Initialisation de Supabase
+     ************************************************************/
+    const SUPABASE_URL = 'https://jcnhpweulhtmbpgixyej.supabase.co'; // Remplacez par votre URL Supabase
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impjbmhwd2V1bGh0bWJwZ2l4eWVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc5Nzk5NjIsImV4cCI6MjA1MzU1NTk2Mn0.1N9bmNDBLdGmgR8KHpvllO4Hco0ZQ1I9I-2eKBJrjcU'; // Remplacez par votre clé Anon
+  
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /************************************************************
+     * 3) Chargement bdd.csv (10 colonnes)
+     ************************************************************/
+     async function loadDataFromSupabase() {
+        try {
+          let { data, error, status } = await supabaseClient
+            .from('faits_divers')
+            .select('*');
+
+          if (error && status !== 406) {
+            throw error;
+          }
+
+          if (data) {
+              console.log("Données récupérées depuis Supabase:", data); // Affiche toutes les données
+            allData = data.map(d => ({
+              date: d.date,
+              ville: d.ville,
+              latitude: d.latitude,
+              longitude: d.longitude,
+              titre: d.titre,
+              contenu: d.contenu,
+              lien_fdesouche: d.lien_fdesouche,
+              lien_source: d.lien_source,
+              article_label: d.article_label,
+              departementCode: d.code_dpt,
+              dateObj: new Date(d.date),
+              labels: d.article_label || []
+            }));
+
+            // Déterminer minDate et maxDate
+            allData.forEach(d => {
+              if (!minDate || d.dateObj < minDate) minDate = d.dateObj;
+              if (!maxDate || d.dateObj > maxDate) maxDate = d.dateObj;
+            });
+
+            initDateFilters();
+            initLabelsFilter();
+            initRegionsFilter();
+            renderLastFacts();
+            updateMap();
+          }
+        } catch (error) {
+          console.error('Erreur lors du chargement des données depuis Supabase:', error.message);
+        }
+      }
+
+      // Appeler la fonction pour charger les données
+      loadDataFromSupabase();
+  </script>
+  <style>
+
+    /* 
+      1) Supprime le scroll global et fixe la hauteur sur 100%. 
+      2) On réservera un header (~60px).
+      3) On ajuste .main-container à la taille disponible (height: calc(100% - 60px)).
+    */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* pas de scroll global */
+    }
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background-color: #ffffff;
+      color: #2c3e50;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1em;
+      background: #c0392b; /* Rouge principal */
+      color: white;
+      box-sizing: border-box;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.8em;
+    }
+    .main-title {
+      font-family: 'Lobster', cursive;
+      font-size: 3em;
+      margin: 0;
+    }
+    .fdesouche-source {
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+      font-size: 0.9em;
+    }
+    .fdesouche-source a {
+      color: white;
+      text-decoration: none;
+    }
+    .fdesouche-logo {
+      width: 18px;
+      height: 18px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1em;
+    }
+    .resistance-links {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+    }
+    .res-text {
+      font-size: 1.1em;
+      font-weight: bold;
+    }
+    .resistance-links a {
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+      transition: color 0.2s;
+      font-size: 1.0em;
+    }
+    .resistance-links a:hover {
+      color: #f1c40f;
+    }
+    .resistance-icon {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Conteneur principal en 3 colonnes */
+    .main-container {
+      width: 100%;
+      height: calc(100% - 60px); /* 60px ~ la hauteur du header */
+      display: grid;
+      grid-template-columns: 250px 1fr 250px;
+      grid-template-rows: 1fr;
+      box-sizing: border-box;
+    }
+
+    /* Colonne de gauche */
+    .left-panel {
+      background-color: #ecf0f1;
+      display: flex;
+      flex-direction: column;
+      height: 100%; /* important pour flex à 100% */
+      overflow: hidden; /* on va scroller QUE sur la partie bottom-left */
+    }
+    .top-left-section {
+      padding: 1em;
+      flex-shrink: 0; /* ne rétrécit pas */
+    }
+    .bottom-left-section {
+      flex: 1;
+      overflow-y: auto; /* scroll ICI */
+      border-top: 2px solid #bdc3c7;
+      padding: 0.5em;
+    }
+
+    /* Colonne centrale => carte */
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Colonne de droite */
+    .right-panel {
+      background-color: #ecf0f1;
+      display: flex;
+      flex-direction: column;
+      height: 100%; /* assure 100% */
+      overflow: hidden; /* on scrolle seulement la section regions */
+    }
+    .labels-section {
+      padding: 1em;
+      flex-shrink: 0; /* statique */
+    }
+    .regions-section {
+      flex: 1;
+      overflow-y: auto; /* scrolle ici */
+      padding: 1em;
+    }
+
+    /* Dates + quickRange + keywords + DB range */
+    .dates-selection {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5em;
+      margin-bottom: 1em;
+    }
+    .dates-selection label {
+      font-weight: bold;
+      margin-bottom: 0.2em;
+    }
+    input[type="date"] {
+      padding: 0.3em;
+      border: 1px solid #7f8c8d;
+      border-radius: 4px;
+    }
+    select#quickRange {
+      padding: 0.3em;
+      border: 1px solid #7f8c8d;
+      border-radius: 4px;
+    }
+    .db-range {
+      font-size: 0.9em;
+      color: #555;
+      margin-bottom: 1em;
+    }
+
+    /* Barre de recherche mots-clés (tags) */
+    .keywords-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
+      background-color: #fff;
+      border: 1px solid #7f8c8d;
+      border-radius: 4px;
+      padding: 0.4em;
+      min-height: 2.2em;
+      margin-bottom: 1em;
+      align-items: center;
+    }
+    .keywords-container input {
+      border: none;
+      outline: none;
+      flex: 1;
+      min-width: 50px;
+    }
+    .keyword-tag {
+      background-color: #c0392b;
+      color: #fff;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+      cursor: default;
+    }
+    .keyword-tag span.remove-tag {
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .keyword-tag span.remove-tag:hover {
+      color: #f1c40f;
+    }
+
+    /* Dernières actus => .fact-item */
+    .fact-item {
+      background-color: #fff;
+      margin-bottom: 0.5em;
+      padding: 0.5em;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .fact-item:hover {
+      background-color: #e74c3c22; /* survol */
+    }
+    .fact-date {
+      font-size: 0.9em;
+      color: #666;
+      margin-bottom: 0.2em;
+    }
+    .fact-ville {
+      font-weight: bold;
+    }
+
+    /* Right panel -> labels + region */
+    .labels-title {
+      font-weight: bold;
+      margin-bottom: 0.5em;
+    }
+    .labels-selection {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3em;
+      margin-bottom: 1em;
+    }
+    .label-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+    }
+    .label-checkbox input[type="checkbox"] {
+      transform: scale(1.1);
+      cursor: pointer;
+    }
+    .label-checkbox label {
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .label-checkbox:hover label {
+      color: #c0392b;
+    }
+
+    .regions-title {
+      font-weight: bold;
+      margin-bottom: 0.5em;
+    }
+
+    .region-item {
+      margin-bottom: 0.3em;
+    }
+    .region-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+      font-weight: bold;
+    }
+    .dept-list {
+      margin-left: 1em;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
+    }
+    .dept-item {
+      display: flex;
+      align-items: center;
+      gap: 0.2em;
+    }
+
+    /* circle-badge */
+    .circle-badge {
+      background-color: #2c3e50;
+      color: #fff;
+      border-radius: 50%;
+      text-align: center;
+      width: 30px;
+      height: 30px;
+      line-height: 30px;
+      font-weight: bold;
+      font-size: 14px;
+      border: 2px solid #fff;
+      transition: transform 0.2s;
+    }
+    .circle-badge:hover {
+      transform: scale(1.2);
+      background-color: #c0392b;
+    }
+
+    /* Responsive => vertical stacking */
+    @media screen and (max-width: 800px) {
+      .main-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        height: calc(100% - 60px);
+      }
+      .left-panel {
+        grid-column: 1;
+        grid-row: 1;
+        order: 1;
+        height: auto;
+        overflow: visible; /* sur mobile on laisse open */
+      }
+      #map {
+        grid-column: 1;
+        grid-row: 2;
+        height: 50vh;
+      }
+      .right-panel {
+        grid-column: 1;
+        grid-row: 3;
+        order: 2;
+        height: auto;
+        overflow: visible;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1 class="main-title">Nos faits "divers"</h1>
+      <div class="fdesouche-source">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAb1BMVEXHAQLHAADFAADGAADHAAHcbm7qoqLRNjfrsLD////WWFjSQUHjlJTtuLjefn/KERLYY2P++/vuvr7MHh7yycn88PDNKyv65+f329vghITMIyPpp6fWW1vcdXXiiorSRUXLGBjTTU3009P77e3PMjJ9BcLUAAABIUlEQVR4AXXSVYLDMBAD0NHIYSg3VArc/4wbWrcu6MfwErN8DRSEbcA4Jp4f6KygjuELaxhFUcyxRk3SLMs3iidud1G0VwgPx2jKybPK837sKAjRshi/m1KtyrqIxjQBJT4hjpZcdDJwGeqqRpqb+iuWgIjR61TfRUeFhHdNpmHXgaGHedDw8oBIftc4WlNA0ZZLldNO6rM2XbP+2x3L/1GSCUGWiT91udlyXR26KOoLF4cVc1xDry0d26+bBoSq6NxRVZbAGMOrY7sHxcZo6tiVeEF6/snaKVZrU1Dfe4uVa2KAOPWb2coNHVsfBLPRuppGPmPYnm7Fw5obbIq2e0C+ox7bLKB8j6bbqiV+DJt6fgp8VcM885rq/H1gkFB7BH/9GxMQV3vMlwAAAABJRU5ErkJggg==" alt="fds logo" class="fdesouche-logo" />
+        <a href="https://www.fdesouche.com/" target="_blank">données issues de fdesouche.com</a>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="resistance-links">
+        <span class="res-text">rejoins la résistance 👉</span>
+        <a href="https://discord.gg/enosis" target="_blank">
+          <img src="https://cdn-icons-png.flaticon.com/512/5968/5968756.png" alt="Discord" class="resistance-icon" />
+          discord.gg/enosis
+        </a>
+        <a href="https://x.com/Discord_Enosis" target="_blank">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAA/0lEQVR4AbXPIazCMACE4d+L2qoZFEGSIGcRc/gJJB5XMzGJmK9EN0HMi+qaibkKVF1txdQe4g0YzPK5yyWXHL9TaPNQ89LojH87N1rbJcXkMF4Fk31UMrf34hm14KUeoQxGArALHTMuQD2cAWQfJXOpgTbksGr9ng8qluShJTPhyCdx63POg7rEim95ZyR68I1ggQpnCEGwyPicw6hZtPEGmnhkycqOio1zm6XuFtyw5XDXfGvuau0dXHzJp8pfBPuhIXO9ZK5ILUCdSvLYMpc6ASBtl3EaC97I4KaFaOCaBE9Zn5jUsVqR2vcTJZO1DdbGoZryVp94Ka/mQfE7f2T3df0WBhLDAAAAAElFTkSuQmCC" alt="Twitter X" class="resistance-icon" />
+          @Discord_Enosis
+        </a>
+        <a href="https://instagram.com/discord_enosis" target="_blank">
+          <img src="https://cdn-icons-png.flaticon.com/512/1384/1384063.png" alt="Instagram" class="resistance-icon" />
+          discord_enosis
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <!-- Colonne gauche -->
+    <div class="left-panel">
+      <!-- Haut (dates/keywords) -->
+      <div class="top-left-section">
+        <div class="dates-selection">
+          <label for="startDate">Date début :</label>
+          <input type="date" id="startDate" />
+
+          <label for="endDate">Date fin :</label>
+          <input type="date" id="endDate" />
+
+          <label for="quickRange">Voir :</label>
+          <select id="quickRange">
+            <option value="aucun">Aucun</option>
+            <option value="today">Depuis aujourd'hui</option>
+            <option value="7days">Depuis 7 jours</option>
+            <option value="1month">Depuis un mois</option>
+            <option value="1year">Depuis un an</option>
+          </select>
+        </div>
+        <div class="db-range" id="db-range"></div>
+
+        <label style="font-weight:bold;margin-bottom:0.2em;display:block;">Mots-clés (OU inclusif) :</label>
+        <div class="keywords-container" id="keywordsContainer">
+          <input type="text" id="keywordsInput" placeholder="Tapez un mot puis Enter ou virgule..." />
+        </div>
+      </div>
+
+      <!-- Bas (Dernières actus) => scrollable -->
+      <div class="bottom-left-section" id="lastFactsContainer">
+        <h3 style="margin-top:0;">Dernières actus 🔴</h3>
+        <!-- On insère dynamiquement -->
+      </div>
+    </div>
+
+    <!-- Colonne centrale => carte -->
+    <div id="map"></div>
+
+    <!-- Colonne droite => (labels statique en haut, region scrollable en bas) -->
+    <div class="right-panel">
+      <div class="labels-section">
+        <div class="labels-title">Filtrer par label(s) :</div>
+        <div class="labels-selection" id="labelsContainer"></div>
+      </div>
+      <div class="regions-section">
+        <div class="regions-title">Filtrer par Région/Département :</div>
+        <div id="regionsContainer">
+          <!-- On insère dynamiquement votre arborescence regions->depts -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+
+  <!-- Script principal -->
+  <script>
+    /************************************************************
+     * 1) Initialisation de la carte
+     ************************************************************/
+    const map = L.map('map').setView([46.8, 2], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      maxZoom:19,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
+    }).addTo(map);
+
+    /************************************************************
+     * 2) Variables Globales
+     ************************************************************/
+    let allData = [];
+    let minDate = null, maxDate = null;
+    let markersLayer = L.layerGroup().addTo(map);
+
+    let keywords = [];             // liste de mots-clés (tags)
+    let selectedDepts = new Set(); // départements cochés
+    let hoverCircle = null;        // pour l'effet de survol dans "Dernières actus"
+
+    // ---- On place un placeholder pour la regionsData: A vous de la remplir ----
+    const regionsData = [
+    {
+      name: "Auvergne-Rhône-Alpes",
+      code: "84",
+      depts: [
+        { name: "Ain (01)", code: "01", checked: false },
+        { name: "Allier (03)", code: "03", checked: false },
+        { name: "Ardèche (07)", code: "07", checked: false },
+        { name: "Cantal (15)", code: "15", checked: false },
+        { name: "Drôme (26)", code: "26", checked: false },
+        { name: "Isère (38)", code: "38", checked: false },
+        { name: "Loire (42)", code: "42", checked: false },
+        { name: "Haute-Loire (43)", code: "43", checked: false },
+        { name: "Puy-de-Dôme (63)", code: "63", checked: false },
+        { name: "Rhône (69)", code: "69", checked: false },
+        { name: "Savoie (73)", code: "73", checked: false },
+        { name: "Haute-Savoie (74)", code: "74", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Bourgogne-Franche-Comté",
+      code: "27",
+      depts: [
+        { name: "Côte-d'Or (21)", code: "21", checked: false },
+        { name: "Doubs (25)", code: "25", checked: false },
+        { name: "Jura (39)", code: "39", checked: false },
+        { name: "Nièvre (58)", code: "58", checked: false },
+        { name: "Haute-Saône (70)", code: "70", checked: false },
+        { name: "Saône-et-Loire (71)", code: "71", checked: false },
+        { name: "Yonne (89)", code: "89", checked: false },
+        { name: "Territoire de Belfort (90)", code: "90", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Bretagne",
+      code: "53",
+      depts: [
+        { name: "Côtes-d'Armor (22)", code: "22", checked: false },
+        { name: "Finistère (29)", code: "29", checked: false },
+        { name: "Ille-et-Vilaine (35)", code: "35", checked: false },
+        { name: "Morbihan (56)", code: "56", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Centre-Val de Loire",
+      code: "24",
+      depts: [
+        { name: "Cher (18)", code: "18", checked: false },
+        { name: "Eure-et-Loir (28)", code: "28", checked: false },
+        { name: "Indre (36)", code: "36", checked: false },
+        { name: "Indre-et-Loire (37)", code: "37", checked: false },
+        { name: "Loir-et-Cher (41)", code: "41", checked: false },
+        { name: "Loiret (45)", code: "45", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Corse",
+      code: "94",
+      depts: [
+        { name: "Corse-du-Sud (2A)", code: "2A", checked: false },
+        { name: "Haute-Corse (2B)", code: "2B", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Grand Est",
+      code: "44",
+      depts: [
+        { name: "Ardennes (08)", code: "08", checked: false },
+        { name: "Aube (10)", code: "10", checked: false },
+        { name: "Marne (51)", code: "51", checked: false },
+        { name: "Haute-Marne (52)", code: "52", checked: false },
+        { name: "Meurthe-et-Moselle (54)", code: "54", checked: false },
+        { name: "Meuse (55)", code: "55", checked: false },
+        { name: "Moselle (57)", code: "57", checked: false },
+        { name: "Bas-Rhin (67)", code: "67", checked: false },
+        { name: "Haut-Rhin (68)", code: "68", checked: false },
+        { name: "Vosges (88)", code: "88", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Hauts-de-France",
+      code: "32",
+      depts: [
+        { name: "Aisne (02)", code: "02", checked: false },
+        { name: "Nord (59)", code: "59", checked: false },
+        { name: "Oise (60)", code: "60", checked: false },
+        { name: "Pas-de-Calais (62)", code: "62", checked: false },
+        { name: "Somme (80)", code: "80", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Île-de-France",
+      code: "11",
+      depts: [
+        { name: "Paris (75)", code: "75", checked: false },
+        { name: "Seine-et-Marne (77)", code: "77", checked: false },
+        { name: "Yvelines (78)", code: "78", checked: false },
+        { name: "Essonne (91)", code: "91", checked: false },
+        { name: "Hauts-de-Seine (92)", code: "92", checked: false },
+        { name: "Seine-Saint-Denis (93)", code: "93", checked: false },
+        { name: "Val-de-Marne (94)", code: "94", checked: false },
+        { name: "Val-d'Oise (95)", code: "95", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Normandie",
+      code: "28",
+      depts: [
+        { name: "Calvados (14)", code: "14", checked: false },
+        { name: "Eure (27)", code: "27", checked: false },
+        { name: "Manche (50)", code: "50", checked: false },
+        { name: "Orne (61)", code: "61", checked: false },
+        { name: "Seine-Maritime (76)", code: "76", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Nouvelle-Aquitaine",
+      code: "75",
+      depts: [
+        { name: "Charente (16)", code: "16", checked: false },
+        { name: "Charente-Maritime (17)", code: "17", checked: false },
+        { name: "Corrèze (19)", code: "19", checked: false },
+        { name: "Creuse (23)", code: "23", checked: false },
+        { name: "Dordogne (24)", code: "24", checked: false },
+        { name: "Gironde (33)", code: "33", checked: false },
+        { name: "Landes (40)", code: "40", checked: false },
+        { name: "Lot-et-Garonne (47)", code: "47", checked: false },
+        { name: "Pyrénées-Atlantiques (64)", code: "64", checked: false },
+        { name: "Deux-Sèvres (79)", code: "79", checked: false },
+        { name: "Vienne (86)", code: "86", checked: false },
+        { name: "Haute-Vienne (87)", code: "87", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Occitanie",
+      code: "76",
+      depts: [
+        { name: "Ariège (09)", code: "09", checked: false },
+        { name: "Aude (11)", code: "11", checked: false },
+        { name: "Aveyron (12)", code: "12", checked: false },
+        { name: "Gard (30)", code: "30", checked: false },
+        { name: "Haute-Garonne (31)", code: "31", checked: false },
+        { name: "Gers (32)", code: "32", checked: false },
+        { name: "Hérault (34)", code: "34", checked: false },
+        { name: "Lot (46)", code: "46", checked: false },
+        { name: "Lozère (48)", code: "48", checked: false },
+        { name: "Hautes-Pyrénées (65)", code: "65", checked: false },
+        { name: "Pyrénées-Orientales (66)", code: "66", checked: false },
+        { name: "Tarn (81)", code: "81", checked: false },
+        { name: "Tarn-et-Garonne (82)", code: "82", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Pays de la Loire",
+      code: "52",
+      depts: [
+        { name: "Loire-Atlantique (44)", code: "44", checked: false },
+        { name: "Maine-et-Loire (49)", code: "49", checked: false },
+        { name: "Mayenne (53)", code: "53", checked: false },
+        { name: "Sarthe (72)", code: "72", checked: false },
+        { name: "Vendée (85)", code: "85", checked: false },
+      ],
+      checked: false
+    },
+    {
+      name: "Provence-Alpes-Côte d'Azur",
+      code: "93",
+      depts: [
+        { name: "Alpes-de-Haute-Provence (04)", code: "04", checked: false },
+        { name: "Hautes-Alpes (05)", code: "05", checked: false },
+        { name: "Alpes-Maritimes (06)", code: "06", checked: false },
+        { name: "Bouches-du-Rhône (13)", code: "13", checked: false },
+        { name: "Var (83)", code: "83", checked: false },
+        { name: "Vaucluse (84)", code: "84", checked: false },
+      ],
+      checked: false
+    },
+    // DROM
+    {
+      name: "Guadeloupe",
+      code: "01",
+      depts: [
+        { name: "Guadeloupe (971)", code: "971", checked:false }
+      ],
+      checked:false
+    },
+    {
+      name: "Martinique",
+      code: "02",
+      depts: [
+        { name: "Martinique (972)", code:"972", checked:false }
+      ],
+      checked:false
+    },
+    {
+      name: "Guyane",
+      code: "03",
+      depts: [
+        { name: "Guyane (973)", code:"973", checked:false }
+      ],
+      checked:false
+    },
+    {
+      name: "La Réunion",
+      code: "04",
+      depts: [
+        { name: "La Réunion (974)", code:"974", checked:false }
+      ],
+      checked:false
+    },
+    {
+      name: "Mayotte",
+      code: "06",
+      depts: [
+        { name: "Mayotte (976)", code:"976", checked:false }
+      ],
+      checked:false
+    }
+  ];
+
+    
+
+    /************************************************************
+     * 4) Filtres
+     ************************************************************/
+    function initDateFilters(){
+      const sd=document.getElementById('startDate');
+      const ed=document.getElementById('endDate');
+      const qr=document.getElementById('quickRange');
+      const dbRange=document.getElementById('db-range');
+
+      if(minDate && maxDate){
+        sd.value=toYMD(minDate);
+        ed.value=toYMD(maxDate);
+        sd.min=toYMD(minDate); sd.max=toYMD(maxDate);
+        ed.min=toYMD(minDate); ed.max=toYMD(maxDate);
+        dbRange.textContent=`Base de données : du ${formatDateFancy(minDate)} au ${formatDateFancy(maxDate)}`;
+      }
+      sd.addEventListener('change',()=>{ qr.value='aucun'; updateMap(); });
+      ed.addEventListener('change',()=>{ qr.value='aucun'; updateMap(); });
+      qr.addEventListener('change',()=>{
+        applyQuickRange(qr.value);
+        updateMap();
+      });
+    }
+
+    let allLabels=new Set();
+    function initLabelsFilter(){
+      allData.forEach(d=>{
+        d.labels.forEach(l=>allLabels.add(l));
+      });
+      const cont=document.getElementById('labelsContainer');
+      const sorted=Array.from(allLabels).sort();
+      sorted.forEach(lbl=>{
+        const dv=document.createElement('div');
+        dv.className='label-checkbox';
+
+        const cb=document.createElement('input');
+        cb.type='checkbox';
+        cb.value=lbl;
+        cb.addEventListener('change', updateMap);
+
+        const llabel=document.createElement('label');
+        llabel.textContent=lbl;
+
+        dv.appendChild(cb);
+        dv.appendChild(llabel);
+        cont.appendChild(dv);
+      });
+    }
+
+    function initRegionsFilter(){
+      const c=document.getElementById('regionsContainer');
+      // On suppose que regionsData est déjà défini. A vous de l'implémenter.
+      regionsData.forEach(region=>{
+        const regionDiv=document.createElement('div');
+        regionDiv.className='region-item';
+
+        const regionCheckDiv=document.createElement('div');
+        regionCheckDiv.className='region-checkbox';
+        const regionCb=document.createElement('input');
+        regionCb.type='checkbox';
+        regionCb.addEventListener('change',()=>{
+          if(regionCb.checked){
+            region.depts.forEach(d=>{
+              d.checked=true;
+              selectedDepts.add(d.code);
+            });
+            region.checked=true;
+          } else {
+            region.depts.forEach(d=>{
+              d.checked=false;
+              selectedDepts.delete(d.code);
+            });
+            region.checked=false;
+          }
+          updateRegionDisplay();
+          updateMap();
+        });
+        const regionLbl=document.createElement('label');
+        regionLbl.textContent=region.name;
+        regionCheckDiv.appendChild(regionCb);
+        regionCheckDiv.appendChild(regionLbl);
+
+        const deptList=document.createElement('div');
+        deptList.className='dept-list';
+        region.depts.forEach(dept=>{
+          const deptItem=document.createElement('div');
+          deptItem.className='dept-item';
+          const deptCb=document.createElement('input');
+          deptCb.type='checkbox';
+          deptCb.value=dept.code;
+          deptCb.addEventListener('change',()=>{
+            if(deptCb.checked){
+              selectedDepts.add(dept.code);
+              dept.checked=true;
+            } else {
+              selectedDepts.delete(dept.code);
+              dept.checked=false;
+            }
+            const allOk=region.depts.every(x=>x.checked);
+            region.checked=allOk;
+            updateRegionDisplay();
+            updateMap();
+          });
+          const deptLabel=document.createElement('label');
+          deptLabel.textContent=dept.name;
+          deptItem.appendChild(deptCb);
+          deptItem.appendChild(deptLabel);
+          deptList.appendChild(deptItem);
+        });
+
+        regionDiv.appendChild(regionCheckDiv);
+        regionDiv.appendChild(deptList);
+        c.appendChild(regionDiv);
+      });
+    }
+    function updateRegionDisplay(){
+      // On ne stocke pas d'ID => on skip la mise à jour "visuelle" 
+      // (tout se gère via selectedDepts + region.depts)
+    }
+
+    /************************************************************
+     * 5) Mots-clés (tags)
+     ************************************************************/
+    const keywordsContainer=document.getElementById('keywordsContainer');
+    const keywordsInput=document.getElementById('keywordsInput');
+
+    keywordsInput.addEventListener('keydown', e=>{
+      if(e.key==='Enter' || e.key===','){
+        e.preventDefault();
+        const val=keywordsInput.value.trim();
+        if(val) addKeyword(val);
+        keywordsInput.value='';
+      }
+    });
+
+    function addKeyword(w){
+      if(!keywords.includes(w)){
+        keywords.push(w);
+        renderKeywords();
+        updateMap();
+      }
+    }
+    function removeKeyword(w){
+      keywords=keywords.filter(x=>x!==w);
+      renderKeywords();
+      updateMap();
+    }
+    function renderKeywords(){
+      Array.from(keywordsContainer.querySelectorAll('.keyword-tag')).forEach(x=>x.remove());
+      keywords.forEach(k=>{
+        const tagDiv=document.createElement('div');
+        tagDiv.className='keyword-tag';
+        const txtSpan=document.createElement('span');
+        txtSpan.textContent=k;
+        const rmSpan=document.createElement('span');
+        rmSpan.textContent='x';
+        rmSpan.className='remove-tag';
+        rmSpan.addEventListener('click',()=>removeKeyword(k));
+
+        tagDiv.appendChild(txtSpan);
+        tagDiv.appendChild(rmSpan);
+        keywordsContainer.insertBefore(tagDiv, keywordsInput);
+      });
+    }
+
+    /************************************************************
+     * 6) "Dernières actus" => 5 plus récents
+     ************************************************************/
+    function renderLastFacts(){
+      let sorted=allData.slice().sort((a,b)=>b.dateObj - a.dateObj);
+      let last5=sorted.slice(0,5);
+      const cont=document.getElementById('lastFactsContainer');
+      // On efface tout sauf le <h3> "Dernières actus"
+      cont.querySelectorAll('.fact-item').forEach(e=>e.remove());
+
+      last5.forEach(d=>{
+        const itemDiv=document.createElement('div');
+        itemDiv.className='fact-item';
+
+        // date
+        const dateSpan=document.createElement('div');
+        dateSpan.className='fact-date';
+        dateSpan.textContent=formatDateFancy(d.dateObj);
+        itemDiv.appendChild(dateSpan);
+
+        // ville
+        const villeSpan=document.createElement('div');
+        villeSpan.className='fact-ville';
+        villeSpan.textContent=`${d.ville} (${d.departementCode||'?'})`;
+        itemDiv.appendChild(villeSpan);
+
+        // titre
+        const titreSpan=document.createElement('div');
+        titreSpan.textContent=d.titre;
+        itemDiv.appendChild(titreSpan);
+
+        // survol => rougissement sur la carte
+        itemDiv.addEventListener('mouseover',()=>{
+          if(hoverCircle){
+            map.removeLayer(hoverCircle);
+            hoverCircle=null;
+          }
+          if(d.latitude && d.longitude){
+            hoverCircle=L.circleMarker([d.latitude,d.longitude],{
+              radius:25,
+              color:'#e74c3c',
+              fillColor:'#e74c3c',
+              fillOpacity:0.2
+            }).addTo(map);
+            map.flyTo([d.latitude, d.longitude], 10, {duration:1.5});
+          }
+        });
+        itemDiv.addEventListener('mouseout',()=>{
+          if(hoverCircle){
+            map.removeLayer(hoverCircle);
+            hoverCircle=null;
+          }
+        });
+
+        // clic => lien fdesouche
+        itemDiv.addEventListener('click', ()=>{
+          if(d.lien_fdesouche){
+            window.open(d.lien_fdesouche,'_blank');
+          }
+        });
+
+        cont.appendChild(itemDiv);
+      });
+    }
+
+    /************************************************************
+     * 7) Filtrage principal => updateMap()
+     ************************************************************/
+    function updateMap(){
+      markersLayer.clearLayers();
+      const sd=document.getElementById('startDate').value;
+      const ed=document.getElementById('endDate').value;
+      const start=new Date(sd);
+      const end=new Date(ed);
+
+      // Labels cochés
+      const checkedLabels=document.querySelectorAll('#labelsContainer input[type="checkbox"]:checked');
+      const selectedLabels=new Set(Array.from(checkedLabels).map(x=>x.value));
+
+      const filtered=allData.filter(d=>{
+        // date
+        if(!(d.dateObj>=start && d.dateObj<=end)) return false;
+
+        // labels => OR
+        if(selectedLabels.size>0){
+          const ok=d.labels.some(l=>selectedLabels.has(l));
+          if(!ok) return false;
+        }
+
+        // depts => AND
+        if(selectedDepts.size>0){
+          if(!d.departementCode||!selectedDepts.has(d.departementCode)) return false;
+        }
+
+        // keywords => OR
+        if(keywords.length>0){
+          let tnorm=d.titre.toLowerCase();
+          let found=keywords.some(k=>tnorm.includes(k.toLowerCase()));
+          if(!found) return false;
+        }
+        return true;
+      });
+
+      // regrouper par (ville, lat, lon)
+      const groupByCity={};
+      filtered.forEach(d=>{
+        const key=`${d.ville}_${d.latitude}_${d.longitude}`;
+        if(!groupByCity[key]){
+          groupByCity[key]={ville:d.ville, lat:d.latitude, lon:d.longitude, articles:[]};
+        }
+        groupByCity[key].articles.push(d);
+      });
+
+      Object.values(groupByCity).forEach(cityData=>{
+        const lat=cityData.lat;
+        const lon=cityData.lon;
+        const nb=cityData.articles.length;
+
+        const markerIcon=L.divIcon({
+          html:`<div class="circle-badge">${nb}</div>`,
+          className:'',
+          iconSize:[30,30]
+        });
+        const marker=L.marker([lat,lon],{icon:markerIcon});
+        cityData.articles.sort((a,b)=>b.dateObj-a.dateObj);
+
+        const cityName=toTitleCase(cityData.ville);
+        let popupContent=`
+          <div style="max-height:220px; overflow-y:auto;">
+            <h3 style="margin:0; padding:0; font-weight:bold;">${cityName}</h3>
+            <p style="margin:0; padding:0;">${nb} article(s)</p>
+            <ul style="padding-left:1.2em; margin-top:0.5em;">
+        `;
+        cityData.articles.forEach(a=>{
+          const fancyDate=formatDateFancy(a.dateObj);
+          popupContent+=`
+            <li style="margin-bottom:0.3em;">
+              <strong>${fancyDate}</strong>
+              <a href="${a.lien_fdesouche}" target="_blank" style="text-decoration:none; color:#2980b9; margin-left:0.3em;">
+                ${a.titre}
+              </a>
+              <div style="font-size:0.8em; color:#666;">Labels: ${a.labels.join(', ')}</div>
+              <div style="font-size:0.8em; color:#666;">Dépt: ${a.departementCode||'?'}</div>
+            </li>
+          `;
+        });
+        popupContent+=`</ul></div>`;
+
+        marker.bindPopup(popupContent);
+        marker.addTo(markersLayer);
+      });
+    }
+
+    /************************************************************
+     * Helpers
+     ************************************************************/
+    function applyQuickRange(val){
+      const sd=document.getElementById('startDate');
+      const ed=document.getElementById('endDate');
+      let now=new Date();
+      let newStart=null;
+      switch(val){
+        case 'today':
+          newStart=new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case '7days':
+          newStart=new Date(now.getFullYear(), now.getMonth(), now.getDate()-7);
+          break;
+        case '1month':
+          newStart=new Date(now.getFullYear(), now.getMonth()-1, now.getDate());
+          break;
+        case '1year':
+          newStart=new Date(now.getFullYear()-1, now.getMonth(), now.getDate());
+          break;
+        default:
+          return;
+      }
+      if(newStart){
+        sd.value=toYMD(newStart);
+        ed.value=toYMD(now);
+      }
+    }
+    function toYMD(d){
+      const yyyy=d.getFullYear();
+      const mm=String(d.getMonth()+1).padStart(2,'0');
+      const dd=String(d.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    function formatDateFancy(d){
+      const day=d.getDate();
+      const month=d.getMonth();
+      const year=d.getFullYear();
+      const mois=['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.'];
+      return `${day} ${mois[month]} ${year}`;
+    }
+    function toTitleCase(str){
+      return str.split(' ').map(x=> x.charAt(0).toUpperCase()+ x.slice(1)).join(' ');
+    }
+  </script>
+</body>
+</html>
