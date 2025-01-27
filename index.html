@@ -37,7 +37,9 @@
 
           if (data) {
               console.log("Données récupérées depuis Supabase:", data); // Affiche toutes les données
-            allData = data.map(d => ({
+            
+            
+              allData = data.map(d => ({
               date: d.date,
               ville: d.ville,
               latitude: d.latitude,
@@ -47,10 +49,15 @@
               lien_fdesouche: d.lien_fdesouche,
               lien_source: d.lien_source,
               article_label: d.article_label,
-              departementCode: d.code_dpt,
+              departementCode: d.code_dpt ? String(d.code_dpt).trim().toUpperCase().padStart(2, '0') : '',
               dateObj: new Date(d.date),
               labels: d.article_label || []
             }));
+
+            // Ajouter un log pour vérifier les codes départements
+            const sampleDeptCodes = allData.slice(0, 10).map(d => d.departementCode);
+            console.log("Exemples de codes départements dans les données:", sampleDeptCodes);
+
 
             // Déterminer minDate et maxDate
             allData.forEach(d => {
@@ -441,10 +448,11 @@
           <label for="quickRange">Voir :</label>
           <select id="quickRange">
             <option value="aucun">Aucun</option>
-            <option value="today">Depuis aujourd'hui</option>
-            <option value="7days">Depuis 7 jours</option>
+            <option value="today">Aujourd'hui</option>
+            <option value="7days">Depuis une semaine</option>
             <option value="1month">Depuis un mois</option>
             <option value="1year">Depuis un an</option>
+            <option value="all">Depuis "toujours"</option>
           </select>
         </div>
         <div class="db-range" id="db-range"></div>
@@ -975,38 +983,43 @@
      ************************************************************/
     function updateMap(){
       markersLayer.clearLayers();
-      const sd=document.getElementById('startDate').value;
-      const ed=document.getElementById('endDate').value;
-      const start=new Date(sd);
-      const end=new Date(ed);
+    const sd=document.getElementById('startDate').value;
+    const ed=document.getElementById('endDate').value;
+    const start=new Date(sd);
+    const end=new Date(ed);
 
-      // Labels cochés
-      const checkedLabels=document.querySelectorAll('#labelsContainer input[type="checkbox"]:checked');
-      const selectedLabels=new Set(Array.from(checkedLabels).map(x=>x.value));
+    // Labels cochés
+    const checkedLabels=document.querySelectorAll('#labelsContainer input[type="checkbox"]:checked');
+    const selectedLabels=new Set(Array.from(checkedLabels).map(x=>x.value));
 
-      const filtered=allData.filter(d=>{
+    // Codes départements sélectionnés
+    console.log("Codes départements sélectionnés:", Array.from(selectedDepts));
+
+    const filtered=allData.filter(d=>{
         // date
         if(!(d.dateObj>=start && d.dateObj<=end)) return false;
 
         // labels => OR
         if(selectedLabels.size>0){
-          const ok=d.labels.some(l=>selectedLabels.has(l));
-          if(!ok) return false;
+            const ok=d.labels.some(l=>selectedLabels.has(l));
+            if(!ok) return false;
         }
 
         // depts => AND
         if(selectedDepts.size>0){
-          if(!d.departementCode||!selectedDepts.has(d.departementCode)) return false;
+            if(!d.departementCode || !selectedDepts.has(d.departementCode)) return false;
         }
 
         // keywords => OR
         if(keywords.length>0){
-          let tnorm=d.titre.toLowerCase();
-          let found=keywords.some(k=>tnorm.includes(k.toLowerCase()));
-          if(!found) return false;
+            let tnorm=d.titre.toLowerCase();
+            let found=keywords.some(k=>tnorm.includes(k.toLowerCase()));
+            if(!found) return false;
         }
         return true;
-      });
+    });
+
+    console.log(`Nombre d'articles après filtrage: ${filtered.length}`);
 
       // regrouper par (ville, lat, lon)
       const groupByCity={};
@@ -1078,6 +1091,9 @@
           break;
         case '1year':
           newStart=new Date(now.getFullYear()-1, now.getMonth(), now.getDate());
+          break;
+        case 'all':
+          newStart=minDate;
           break;
         default:
           return;
