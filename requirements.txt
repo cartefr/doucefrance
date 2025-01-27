@@ -4,3 +4,5 @@ unidecode
 pandas
 python-dotenv
 tqdm
+supabase
+argparse
