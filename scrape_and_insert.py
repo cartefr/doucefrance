@@ -136,30 +136,53 @@ def find_city_in_title(title, popular_cities_dict, cities_dict_nodept, cities_di
     Trouve la ville dans le titre de l'article.
     """
     title_norm = unidecode.unidecode(title).lower()
+    logging.debug(f"Titre normalisé pour la recherche de ville : '{title_norm}'")
 
-    # 1) Pattern (dept)
+    # 1) Pattern (dept) avec gestion des caractères de ponctuation après la parenthèse
     match_dept = re.search(r'\((\d{1,3})\)', title_norm)
     if match_dept:
         dept_num = match_dept.group(1)
+        # Extraire la partie du titre avant la parenthèse
         city_part = title[:match_dept.start()]
+        # Supprimer les espaces et la ponctuation finale
+        city_part = city_part.strip().rstrip('.!?')  # Ajout de rstrip pour enlever la ponctuation
         city_part_norm = transform_label_for_dict(city_part)
+        logging.debug(f"Partie de la ville extraite : '{city_part_norm}', Département : '{dept_num}'")
 
         tokens = city_part_norm.split()
+        # Parcourir les tokens de la ville de la plus longue sous-chaîne à la plus courte
         for size in range(min(5, len(tokens)), 0, -1):
             chunk = tokens[-size:]
             chunk_join = ' '.join(chunk)
             chunk_norm = transform_label_for_dict(chunk_join)
+            logging.debug(f"Vérification du chunk : '{chunk_norm}' avec Département : '{dept_num}'")
             if (chunk_norm, dept_num) in cities_dict_dept:
                 label_original, lat, lon = cities_dict_dept[(chunk_norm, dept_num)]
+                logging.info(f"Ville reconnue : {label_original} (Département {dept_num})")
                 return (label_original, lat, lon, dept_num)
 
-    # 2) Fallback => popular cities
+        # Si aucune correspondance exacte, essayer une correspondance partielle
+        for (city_norm, dept), (label_original, lat, lon) in cities_dict_dept.items():
+            if dept == dept_num and city_norm.startswith(city_part_norm):
+                logging.info(f"Ville reconnue (partielle) : {label_original} (Département {dept_num})")
+                return (label_original, lat, lon, dept_num)
+
+    # 2) Fallback => villes populaires
     for pop_city_norm, dept_code in popular_cities_dict.items():
         if pop_city_norm in title_norm:
+            # Prioriser les correspondances exactes dans les villes populaires
             if (pop_city_norm, dept_code) in cities_dict_dept:
                 label_original, lat, lon = cities_dict_dept[(pop_city_norm, dept_code)]
+                logging.info(f"Ville reconnue via ville populaire : {label_original} (Département {dept_code})")
                 return (label_original, lat, lon, dept_code)
+            # Sinon, essayer des correspondances partielles
+            else:
+                for (city_norm, dept), (label_original, lat, lon) in cities_dict_dept.items():
+                    if dept == dept_code and city_norm.startswith(pop_city_norm):
+                        logging.info(f"Ville reconnue via ville populaire (partielle) : {label_original} (Département {dept_code})")
+                        return (label_original, lat, lon, dept_code)
 
+    logging.warning(f"Aucune ville reconnue dans le titre : '{title}'")
     return None
 
 def fetch_article_details(article_url):
