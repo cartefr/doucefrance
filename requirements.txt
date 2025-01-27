@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+unidecode
+pandas
+python-dotenv
+tqdm
