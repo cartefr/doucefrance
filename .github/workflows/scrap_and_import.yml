@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: '0 */3 * * *'  # Exécute toutes les 3 heures
     - cron: '55 22 * * *'  # Exécute une fois à 23h55 heure d'hiver
-    - cron: '55 21 * * *' # Exécute une fois à 23h55 heure d'été
+    - cron: '55 21 * * *'  # Exécute une fois à 23h55 heure d'été
   workflow_dispatch:
 
 concurrency:
@@ -22,7 +22,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'  # Mise à jour vers Python 3.11
 
       - name: Install dependencies
         run: |
