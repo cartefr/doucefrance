@@ -135,6 +135,7 @@ def find_city_in_title(title, popular_cities_dict, cities_dict_nodept, cities_di
     """
     Trouve la ville dans le titre de l'article.
     """
+    title=title.replace('«', ' ').replace('»', ' ')
     title_norm = unidecode.unidecode(title).lower()
     logging.debug(f"Titre normalisé pour la recherche de ville : '{title_norm}'")
 
